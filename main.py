@@ -1,8 +1,28 @@
 import os
 import time
+import threading
 import requests
 import schedule
+from flask import Flask
 from playwright.sync_api import sync_playwright
+
+# --- 1. Renderの無料プラン（Web Service）対策の簡易サーバー ---
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Horipro Monitor is running!"
+
+def run_web_server():
+    # Renderから割り当てられるポート（環境変数 PORT）を使用（デフォルトは10000）
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+
+# 別スレッドでWebサーバーを常時起動しつつ、メインの監視処理を動かす
+def start_server_in_background():
+    server_thread = threading.Thread(target=run_web_server, daemon=True)
+    server_thread.start()
+# -------------------------------------------------------------
 
 # LINE Notify トークン（環境変数から取得）
 LINE_NOTIFY_TOKEN = os.getenv("LINE_NOTIFY_TOKEN")
@@ -35,15 +55,19 @@ def check_website():
         print(f"エラーが発生しました: {e}")
         send_line_notify(f"\n【エラー発生】\n監視処理中にエラーが発生しました:\n{e}")
 
-# 毎時 05 分に実行するスケジュール設定
-schedule.every().hour.at(":05").do(check_website)
+if __name__ == "__main__":
+    # Webサーバーをバックグラウンドで起動
+    start_server_in_background()
 
-print("監視プログラムを起動しました。毎時05分に実行します...")
+    # 毎時 05 分に実行するスケジュール設定
+    schedule.every().hour.at(":05").do(check_website)
 
-# 起動時に1回確認
-check_website()
+    print("監視プログラムを起動しました。毎時05分に実行します...")
 
-# 定期実行ループ
-while True:
-    schedule.run_pending()
-    time.sleep(30)
+    # 起動時に1回確認
+    check_website()
+
+    # 定期実行ループ
+    while True:
+        schedule.run_pending()
+        time.sleep(30)
