@@ -4,9 +4,9 @@ import threading
 import requests
 import schedule
 from flask import Flask
-from playwright.sync_api import sync_playwright
+from bs4 import BeautifulSoup
 
-# --- 1. Renderの無料プラン（Web Service）対策の簡易サーバー ---
+# --- Renderの無料プラン（Web Service）対策の簡易サーバー ---
 app = Flask(__name__)
 
 @app.route('/')
@@ -18,7 +18,6 @@ def run_web_server():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
 
-# 別スレッドでWebサーバーを常時起動しつつ、メインの監視処理を動かす
 def start_server_in_background():
     server_thread = threading.Thread(target=run_web_server, daemon=True)
     server_thread.start()
@@ -40,17 +39,20 @@ def send_line_notify(message):
 def check_website():
     print("Webサイトの監視チェックを開始します...")
     try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-            page.goto(TARGET_URL, timeout=60000)
-            
-            # ここでサイトのチェック処理を実行
-            title = page.title()
-            print(f"取得タイトル: {title}")
-            
-            browser.close()
-            send_line_notify(f"\n【定期チェック】\nサイトの確認が完了しました！\nタイトル: {title}")
+        # ブラウザの代わりに軽量なrequestsでページを取得
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        response = requests.get(TARGET_URL, headers=headers, timeout=30)
+        response.raise_for_status() # エラーがあれば例外を発生させる
+        
+        # BeautifulSoupでHTMLを解析してタイトルを取得
+        soup = BeautifulSoup(response.text, 'html.parser')
+        title = soup.title.string if soup.title else "タイトルなし"
+        
+        print(f"取得タイトル: {title}")
+        send_line_notify(f"\n【定期チェック】\nサイトの確認が完了しました！\nタイトル: {title}")
+        
     except Exception as e:
         print(f"エラーが発生しました: {e}")
         send_line_notify(f"\n【エラー発生】\n監視処理中にエラーが発生しました:\n{e}")
